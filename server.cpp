@@ -157,6 +157,12 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
 
 }
 
+void keepAlive() {
+    std::string msg;
+    msg += "Don't let me go!";
+
+}
+
 // Process command from client on the server
 
 void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, 
@@ -172,6 +178,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
   while(stream >> token)
       tokens.push_back(token);
 
+  //If the message is a connect response from a server, add the name of the server to the client list.
   if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 2))
   {
      clients[clientSocket]->name = tokens[1];
