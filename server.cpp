@@ -163,6 +163,62 @@ void keepAlive() {
 
 }
 
+void connectClient(std::vector<std::string> tokens) {
+    struct addrinfo hints, *svr;              // Network host entry for server
+   struct sockaddr_in serv_addr;           // Socket address for server
+   int serverSocket;                         // Socket used for server 
+   int nwrite;                               // No. bytes written to server
+   char buffer[1025];                        // buffer for writing to server
+   bool finished;                   
+   int set = 1;                              // Toggle for setsockopt
+
+   hints.ai_family   = AF_INET;            // IPv4 only addresses
+   hints.ai_socktype = SOCK_STREAM;
+
+   char* host = &(tokens[1])[0];
+   char* port = &(tokens[2])[0];
+
+   memset(&hints,   0, sizeof(hints));
+
+   if(getaddrinfo(host, port, &hints, &svr) != 0)
+   {
+       perror("getaddrinfo failed: ");
+       return;
+   }
+
+   struct hostent *server;
+   server = gethostbyname(host);
+
+   bzero((char *) &serv_addr, sizeof(serv_addr));
+   serv_addr.sin_family = AF_INET;
+   bcopy((char *)server->h_addr,
+      (char *)&serv_addr.sin_addr.s_addr,
+      server->h_length);
+   serv_addr.sin_port = htons(atoi(port));
+
+   serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+
+   // Turn on SO_REUSEADDR to allow socket to be quickly reused after 
+   // program exit.
+
+   if(setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &set, sizeof(set)) < 0)
+   {
+       printf("Failed to set SO_REUSEADDR for port %s\n", port);
+       perror("setsockopt failed: ");
+   }
+
+   
+   if(connect(serverSocket, (struct sockaddr *)&serv_addr, sizeof(serv_addr) )< 0)
+   {
+       if(errno != EINPROGRESS)
+       {
+         printf("Failed to open socket to server: %s\n", host);
+         perror("Connect failed: ");
+         return;
+       }
+   }
+}
+
 // Process command from client on the server
 
 void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, 
@@ -172,16 +228,23 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
   std::vector<std::string> tokens;
   std::string token;
 
+  std::string buf(buffer);
+  std::replace(buf.begin(), buf.end(), ',', ' ');
+
   // Split command from client into tokens for parsing
-  std::stringstream stream(buffer);
+  std::stringstream stream(buf);
 
   while(stream >> token)
       tokens.push_back(token);
 
-  //If the message is a connect response from a server, add the name of the server to the client list.
-  if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 2))
+  if(tokens[0].compare("CONNECT") == 0)
   {
-     clients[clientSocket]->name = tokens[1];
+     if (tokens.size() != 3) {
+         perror("Connect requires an IP address and Port number\n");
+     }
+     else {
+         connectClient(tokens);
+     }
   }
   else if(tokens[0].compare("LEAVE") == 0)
   {
@@ -262,9 +325,11 @@ int main(int argc, char* argv[])
     socklen_t clientLen;
     char buffer[1025];              // buffer for reading from clients
 
+    std::string group = "P3_Group_82";
+
     if(argc != 2)
     {
-        printf("Usage: chat_server <ip port>\n");
+        printf("Usage: ./tsamgroup82 <ip port>\n");
         exit(0);
     }
 

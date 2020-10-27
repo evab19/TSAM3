@@ -50,7 +50,6 @@ void listenServer(int serverSocket)
        {
           printf("%s\n", buffer);
        }
-       printf("here\n");
     }
 }
 
@@ -66,7 +65,7 @@ int main(int argc, char* argv[])
 
    if(argc != 3)
    {
-        printf("Usage: ./client <ip  port>\n");
+        printf("Usage: ./client <ip number> <ip  port>\n");
         printf("Ctrl-C to terminate\n");
         exit(0);
    }
@@ -106,10 +105,6 @@ int main(int argc, char* argv[])
    
    if(connect(serverSocket, (struct sockaddr *)&serv_addr, sizeof(serv_addr) )< 0)
    {
-       // EINPROGRESS means that the connection is still being setup. Typically this
-       // only occurs with non-blocking sockets. (The serverSocket above is explicitly
-       // not in non-blocking mode, so this check here is just an example of how to
-       // handle this properly.)
        if(errno != EINPROGRESS)
        {
          printf("Failed to open socket to server: %s\n", argv[1]);
