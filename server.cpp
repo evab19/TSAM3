@@ -216,6 +216,17 @@ void connectClient(std::vector<std::string> tokens)
             return;
         }
     }
+
+    std::string msg = "*QUERYSERVERS,P3_GROUP_82#";
+    send(serverSocket, msg.c_str(), msg.length() - 1, 0);
+    memset(buffer, 0, 4096);
+        if (recv(serverSocket, buffer, 4096, 0) < 0) {
+        perror("Did not receive a response\n");
+        }
+        else {
+            std::cout << buffer << std::endl;
+        }
+
 }
 
 // Process command from client on the server
@@ -244,8 +255,6 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
     else {
         tokens[0].erase(0, 1);
         tokens[tokens.size() - 1] = tokens[tokens.size() - 1].substr(0, tokens[tokens.size() - 1].size()-1);
-        std::cout << tokens[0] << tokens[tokens.size() - 1] << std::endl;
-
 
         if (tokens[0].compare("CONNECT") == 0)
         {
@@ -282,10 +291,6 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
             }
 
             send(clientSocket, msg.c_str(), msg.length() - 1, 0);
-
-            std::string queryback;
-            queryback += "\nQUERYSERVERS P3_Group_82";
-            send(clientSocket, queryback.c_str(), queryback.length(), 0);
         }
 
         // This is slightly fragile, since it's relying on the order
@@ -403,8 +408,7 @@ int main(int argc, char *argv[])
                 n--;
 
                 printf("Client connected on server: %d\n", clientSock);
-                printf("IP address is: %s\n", inet_ntoa(incomingAddr));
-                printf("Port number is: %d\n", (int)ntohs(incoming->sin_port));
+
             }
             // Now check for commands from clients
             std::list<Client *> disconnectedClients;
