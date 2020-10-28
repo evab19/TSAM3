@@ -168,7 +168,7 @@ void connectClient(std::vector<std::string> tokens)
     struct sockaddr_in serv_addr; // Socket address for server
     int serverSocket;             // Socket used for server
     int nwrite;                   // No. bytes written to server
-    char buffer[1025];            // buffer for writing to server
+    char buffer[4096];            // buffer for writing to server
     bool finished;
     int set = 1; // Toggle for setsockopt
 
@@ -218,7 +218,7 @@ void connectClient(std::vector<std::string> tokens)
     }
 
     std::string msg = "*QUERYSERVERS,P3_GROUP_82#";
-    send(serverSocket, msg.c_str(), msg.length() - 1, 0);
+    send(serverSocket, msg.c_str(), msg.length(), 0);
     memset(buffer, 0, 4096);
         if (recv(serverSocket, buffer, 4096, 0) < 0) {
         perror("Did not receive a response\n");
@@ -283,6 +283,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
             std::string msg;
 
             clients[clientSocket]->name = tokens[1];
+            std::cout << tokens[1] << std::endl;
 
             msg += "CONNECTED,";
             for (auto const &sock : clients)
@@ -341,7 +342,7 @@ int main(int argc, char *argv[])
     int maxfds;           // Passed to select() as max fd in set
     struct sockaddr_in client;
     socklen_t clientLen;
-    char buffer[1025]; // buffer for reading from clients
+    char buffer[4096]; // buffer for reading from clients
 
     std::string group = "P3_Group_82";
 
