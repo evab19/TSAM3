@@ -216,16 +216,17 @@ void connectClient(std::vector<std::string> tokens)
             return;
         }
     }
+    clients[serverSocket] = new Client(serverSocket, serv_addr.sin_port, host);
 
     std::string msg = "*QUERYSERVERS,P3_GROUP_82#";
     send(serverSocket, msg.c_str(), msg.length(), 0);
     memset(buffer, 0, 4096);
-        if (recv(serverSocket, buffer, 4096, 0) < 0) {
-        perror("Did not receive a response\n");
-        }
-        else {
-            std::cout << buffer << std::endl;
-        }
+    if (recv(serverSocket, buffer, 4096, 0) < 0) {
+    perror("Did not receive a response\n");
+    }
+    else {
+        std::cout << buffer << std::endl;
+    }
 
 }
 
