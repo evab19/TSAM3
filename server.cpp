@@ -238,135 +238,154 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
     std::vector<std::string> tokens;
     std::string token;
 
-    std::string buf(buffer);
-    std::replace(buf.begin(), buf.end(), ',', ' ');
+    if (buffer != NULL) {
+        std::string buf(buffer);
+        std::replace(buf.begin(), buf.end(), ',', ' ');
 
-    // Split command from client into tokens for parsing
-    std::stringstream stream(buf);
+        // Split command from client into tokens for parsing
+        std::stringstream stream(buf);
 
-    while (stream >> token) {
-        tokens.push_back(token);
-    }
-
-    if (!(buf[0] == '*') && (buf[-1] == '#')) {
-        std::cout << "Commands must start with * and end with #" << buffer << std::endl;
-    }   
-
-    else {
-        tokens[0].erase(0, 1);
-        tokens[tokens.size() - 1] = tokens[tokens.size() - 1].substr(0, tokens[tokens.size() - 1].size()-1);
-
-        if (tokens[0].compare("CONNECT") == 0)
-        {
-            if (tokens.size() != 3)
-            {
-                perror("Connect requires an IP address and Port number\n");
-            }
-            else
-            {
-                connectClient(tokens);
-            }
-        }
-        else if (tokens[0].compare("LEAVE") == 0)
-        {
-
-
-            closeClient(clientSocket, openSockets, maxfds);
+        while (stream >> token) {
+            tokens.push_back(token);
         }
 
-        else if (tokens[0].compare("QUERYSERVERS") == 0)
-        {
-            // TODO order the response so the querying server is printed first!
-            std::cout << "Servers connected" << std::endl;
-            std::string msg;
+        if (!(buf[0] == '*') && (buf[-1] == '#')) {
+            std::cout << "Commands must start with * and end with #" << buffer << std::endl;
+        }   
 
-            clients[clientSocket]->name = tokens[1];
-            std::cout << tokens[1] << std::endl;
+        else {
+            tokens[0].erase(0, 1);
+            tokens[tokens.size() - 1] = tokens[tokens.size() - 1].substr(0, tokens[tokens.size() - 1].size()-1);
 
-            msg += "CONNECTED,";
-            for (auto const &sock : clients)
+            if (tokens[0].compare("CONNECT") == 0)
             {
-                msg += sock.second->name + "," + sock.second->ip_address + "," + std::to_string(sock.second->port) + ";";
-            }
-
-            send(clientSocket, msg.c_str(), msg.length() - 1, 0);
-        }
-
-        // This is slightly fragile, since it's relying on the order
-        // of evaluation of the if statement.
-        else if ((tokens[0].compare("MSG") == 0) && (tokens[1].compare("ALL") == 0))
-        {
-            std::string msg;
-            for (auto i = tokens.begin() + 2; i != tokens.end(); i++)
-            {
-                msg += *i + " ";
-            }
-
-            for (auto const &pair : clients)
-            {
-                send(pair.second->sock, msg.c_str(), msg.length(), 0);
-            }
-        }
-        else if (tokens[0].compare("SEND_MSG") == 0)
-        {
-            std::string msg;
-            for (auto i = tokens.begin() + 2; i != tokens.end(); i++)
-            {
-                msg += *i + " ";
-            }
-            bool wasConnected = false;
-            for (auto const &sock : clients)
-            {
-                if (sock.second->name.compare(tokens[1]) == 0)
+                if (tokens.size() != 3)
                 {
-                    wasConnected = true;
-                    send(sock.second->sock, msg.c_str(), msg.length(), 0);
-                    break;
+                    perror("Connect requires an IP address and Port number\n");
+                }
+                else
+                {
+                    connectClient(tokens);
                 }
             }
-            if (!wasConnected) {
-                // Store it instead
-                if (messagesPerGroup.count(tokens[1]) > 0) {
-                    // We already have messages for the group
-                    messagesPerGroup.at(tokens[1]).push_back(msg);
+            else if (tokens[0].compare("LEAVE") == 0)
+            {
+                closeClient(clientSocket, openSockets, maxfds);
+            }
+
+            else if (tokens[0].compare("QUERYSERVERS") == 0)
+            {
+                if (tokens.size() == 2) {
+                    // TODO order the response so the querying server is printed first!
+                    std::cout << "Servers connected" << std::endl;
+                    std::string msg;
+
+                    clients[clientSocket]->name = tokens[1];
+                    std::cout << tokens[1] << std::endl;
+
+                    msg += "CONNECTED,";
+                    for (auto const &sock : clients)
+                    {
+                        msg += sock.second->name + "," + sock.second->ip_address + "," + std::to_string(sock.second->port) + ";";
+                    }
+
+                    send(clientSocket, msg.c_str(), msg.length() - 1, 0);
+                }
+                
+            }
+
+            // This is slightly fragile, since it's relying on the order
+            // of evaluation of the if statement.
+            else if ((tokens[0].compare("MSG") == 0) && (tokens[1].compare("ALL") == 0))
+            {
+                std::string msg;
+                for (auto i = tokens.begin() + 2; i != tokens.end(); i++)
+                {
+                    msg += *i + " ";
+                }
+
+                for (auto const &pair : clients)
+                {
+                    send(pair.second->sock, msg.c_str(), msg.length(), 0);
+                }
+            }
+            else if (tokens[0].compare("SEND_MSG") == 0)
+            {
+                std::string msg;
+                for (auto i = tokens.begin() + 2; i != tokens.end(); i++)
+                {
+                    msg += *i + " ";
+                }
+                if (!msg.empty()) {
+                    bool wasConnected = false;
+                    for (auto const &sock : clients)
+                    {
+                        if (sock.second->name.compare(tokens[1]) == 0)
+                        {
+                            wasConnected = true;
+                            send(sock.second->sock, msg.c_str(), msg.length(), 0);
+                            break;
+                        }
+                    }
+                    std::string reply = "Not connected to group server, storing message";
+                    if (!wasConnected) {
+                        // Store it instead
+                        if (messagesPerGroup.count(tokens[1]) > 0) {
+                            // We already have messages for the group
+                            messagesPerGroup.at(tokens[1]).push_back(msg);
+                            
+                            
+                        }
+                        else {
+                            // Group hasn't had a message yet, create an instance for it in the map and a new vector
+                            std::vector<std::string> v;
+                            v.push_back(msg);
+                            messagesPerGroup.insert(std::pair<std::string, std::vector<std::string>>(tokens[1], v));
+                        }
+                        send(clientSocket, reply.c_str(), reply.length() - 1, 0);
+                    }
                 }
                 else {
-                    // Group hasn't had a message yet, create an instance for it in the map and a new vector
-                    std::vector<std::string> v;
-                    v.push_back(msg);
-                    messagesPerGroup.insert(std::pair<std::string, std::vector<std::string>>(tokens[1], v));
+                    std::string reply = "Please don't send empty messages";
+                    send(clientSocket, reply.c_str(), reply.length() - 1, 0);
                 }
+                
             }
-        }
-        else if (tokens[0].compare("GET_MSG") == 0) {
-            std::string reply = "";
-            std::vector<std::string> messages;
-            try {
-                messages = messagesPerGroup[tokens[1]];
-                for (int i = 0; i < messagesPerGroup.at(tokens[1]).size(); i++) {
-                    reply += "***** Message " + std::to_string(i) + " *****";
-                    reply += messagesPerGroup.at(tokens[1])[i];
+            else if (tokens[0].compare("GET_MSG") == 0) {
+                std::string reply = "";
+                std::vector<std::string> messages;
+                try {
+                    messages = messagesPerGroup.at(tokens[1]);
+                    reply += "Found " + std::to_string(messages.size()) + " messages for group\n";
+                    for (int i = 0; i < messages.size(); i++) {
+                        reply += messages[i] + "\n";
+                    }
                 }
+                catch (const std::out_of_range& e) {
+                    // No messages found
+                    
+                }
+                if (messages.empty()) {
+                    reply = "No messages found for group " + tokens[1];
+                }
+                send(clientSocket, reply.c_str(), reply.length() - 1, 0);
             }
-            catch (const std::out_of_range& e) {
-                // No messages found, reply should be empty
+
+            else if (tokens[0].compare("STATUSREQ") == 0) {
+
             }
-            send(clientSocket, reply.c_str(), reply.length() - 1, 0);
-        }
 
-        else if (tokens[0].compare("STATUSREQ") == 0) {
+            else if (tokens[0].compare("LISTSERVERS") == 0) {
 
-        }
+            }
 
-        else if (tokens[0].compare("LISTSERVERS") == 0) {
-
-        }
-
-        else
-        {
-            std::cout << "Unknown command from client:" << buffer << std::endl;
+            else
+            {
+                std::cout << "Unknown command from client:" << buffer << std::endl;
+            }
         }
     }
+    
 }
 
 int main(int argc, char *argv[])
