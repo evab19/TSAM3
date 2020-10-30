@@ -49,7 +49,6 @@ public:
     std::string name;                 // Limit length of name of client's user
     int port;                         // port number of client connection
     std::string ip_address;           // ip address of client connection
-    std::vector<std::string> message; // vector storing messages for client
 
     Client(int socket, int p, std::string ip)
     {
@@ -69,6 +68,7 @@ public:
 // (indexed on socket no.) sacrificing memory for speed.
 
 std::map<int, Client *> clients; // Lookup table for per Client information
+std::map<std::string, std::vector<std::string>> messagesPerGroup; // storing messages for groups
 
 // Open socket for specified port.
 //
@@ -159,7 +159,7 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
 void keepAlive()
 {
     std::string msg;
-    msg += "Don't let me go!";
+    msg += "I don't want to go";
 }
 
 void connectClient(std::vector<std::string> tokens)
@@ -269,9 +269,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         }
         else if (tokens[0].compare("LEAVE") == 0)
         {
-            // Close the socket, and leave the socket handling
-            // code to deal with tidying up clients etc. when
-            // select() detects the OS has torn down the connection.
+
 
             closeClient(clientSocket, openSockets, maxfds);
         }
@@ -311,19 +309,59 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         }
         else if (tokens[0].compare("SEND_MSG") == 0)
         {
+            std::string msg;
+            for (auto i = tokens.begin() + 2; i != tokens.end(); i++)
+            {
+                msg += *i + " ";
+            }
+            bool wasConnected = false;
             for (auto const &sock : clients)
             {
                 if (sock.second->name.compare(tokens[1]) == 0)
                 {
-                    std::string msg;
-                    for (auto i = tokens.begin() + 2; i != tokens.end(); i++)
-                    {
-                        msg += *i + " ";
-                    }
+                    wasConnected = true;
                     send(sock.second->sock, msg.c_str(), msg.length(), 0);
+                    break;
+                }
+            }
+            if (!wasConnected) {
+                // Store it instead
+                if (messagesPerGroup.count(tokens[1]) > 0) {
+                    // We already have messages for the group
+                    messagesPerGroup.at(tokens[1]).push_back(msg);
+                }
+                else {
+                    // Group hasn't had a message yet, create an instance for it in the map and a new vector
+                    std::vector<std::string> v;
+                    v.push_back(msg);
+                    messagesPerGroup.insert(std::pair<std::string, std::vector<std::string>>(tokens[1], v));
                 }
             }
         }
+        else if (tokens[0].compare("GET_MSG") == 0) {
+            std::string reply = "";
+            std::vector<std::string> messages;
+            try {
+                messages = messagesPerGroup[tokens[1]];
+                for (int i = 0; i < messagesPerGroup.at(tokens[1]).size(); i++) {
+                    reply += "***** Message " + std::to_string(i) + " *****";
+                    reply += messagesPerGroup.at(tokens[1])[i];
+                }
+            }
+            catch (const std::out_of_range& e) {
+                // No messages found, reply should be empty
+            }
+            send(clientSocket, reply.c_str(), reply.length() - 1, 0);
+        }
+
+        else if (tokens[0].compare("STATUSREQ") == 0) {
+
+        }
+
+        else if (tokens[0].compare("LISTSERVERS") == 0) {
+
+        }
+
         else
         {
             std::cout << "Unknown command from client:" << buffer << std::endl;
