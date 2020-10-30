@@ -68,7 +68,7 @@ public:
 // (indexed on socket no.) sacrificing memory for speed.
 
 std::map<int, Client *> clients; // Lookup table for per Client information
-std::map<std::string, std::vector<std::string>> messagesPerGroup; // storing messages for groups
+std::map<std::string, std::map<std::string, std::vector<std::string>>> messagesPerGroup; // storing messages for groups
 
 // Open socket for specified port.
 //
@@ -248,11 +248,12 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         while (stream >> token) {
             tokens.push_back(token);
         }
+        
 
-        if (!(buf[0] == '*') && (buf[-1] == '#')) {
-            std::cout << "Commands must start with * and end with #" << buffer << std::endl;
+        if (!(buf[0] == '*' && buf[buf.size() - 1] == '#')) {
+            std::string msg = "Commands must start with * and end with # " + std::string(buffer);
+            send(clientSocket, msg.c_str(), msg.length(), 0);
         }   
-
         else {
             tokens[0].erase(0, 1);
             tokens[tokens.size() - 1] = tokens[tokens.size() - 1].substr(0, tokens[tokens.size() - 1].size()-1);
@@ -294,25 +295,10 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
                 
             }
 
-            // This is slightly fragile, since it's relying on the order
-            // of evaluation of the if statement.
-            else if ((tokens[0].compare("MSG") == 0) && (tokens[1].compare("ALL") == 0))
-            {
-                std::string msg;
-                for (auto i = tokens.begin() + 2; i != tokens.end(); i++)
-                {
-                    msg += *i + " ";
-                }
-
-                for (auto const &pair : clients)
-                {
-                    send(pair.second->sock, msg.c_str(), msg.length(), 0);
-                }
-            }
             else if (tokens[0].compare("SEND_MSG") == 0)
             {
                 std::string msg;
-                for (auto i = tokens.begin() + 2; i != tokens.end(); i++)
+                for (auto i = tokens.begin() + 3; i != tokens.end(); i++)
                 {
                     msg += *i + " ";
                 }
@@ -332,51 +318,89 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
                         // Store it instead
                         if (messagesPerGroup.count(tokens[1]) > 0) {
                             // We already have messages for the group
-                            messagesPerGroup.at(tokens[1]).push_back(msg);
-                            
-                            
+                            if (messagesPerGroup[tokens[1]].count(tokens[2]) > 0) {
+                                // We already have messages for this group from the sender
+                                messagesPerGroup.at(tokens[1]).at(tokens[2]).push_back(msg);
+                            }
+                            else {
+                                // Receiver didn't already have messages from sender
+                                std::vector<std::string> v;
+                                v.push_back(msg);
+                                messagesPerGroup[tokens[1]].insert(std::pair<std::string, std::vector<std::string>>(tokens[2], v));
+                            }
                         }
                         else {
                             // Group hasn't had a message yet, create an instance for it in the map and a new vector
                             std::vector<std::string> v;
                             v.push_back(msg);
-                            messagesPerGroup.insert(std::pair<std::string, std::vector<std::string>>(tokens[1], v));
+                            std::map<std::string, std::vector<std::string>> innerMap;
+                            innerMap[tokens[2]] = v;
+                            messagesPerGroup[tokens[1]] = innerMap;
                         }
-                        send(clientSocket, reply.c_str(), reply.length() - 1, 0);
+                        send(clientSocket, reply.c_str(), reply.length(), 0);
                     }
                 }
                 else {
                     std::string reply = "Please don't send empty messages";
-                    send(clientSocket, reply.c_str(), reply.length() - 1, 0);
+                    send(clientSocket, reply.c_str(), reply.length(), 0);
                 }
                 
             }
             else if (tokens[0].compare("GET_MSG") == 0) {
                 std::string reply = "";
-                std::vector<std::string> messages;
+                std::map<std::string, std::vector<std::string>> groupMap;
                 try {
-                    messages = messagesPerGroup.at(tokens[1]);
-                    reply += "Found " + std::to_string(messages.size()) + " messages for group\n";
-                    for (int i = 0; i < messages.size(); i++) {
-                        reply += messages[i] + "\n";
+                    groupMap = messagesPerGroup[tokens[1]];
+                    for(std::map<std::string, std::vector<std::string>>::iterator i = groupMap.begin(); i != groupMap.end(); ++i) {
+                        reply += "Messages from group " + i->first + "\n";
+                        for (int j = 0; j < i->second.size(); j++) {
+                            reply += i->second[j] + "\n";
+                        }
                     }
                 }
                 catch (const std::out_of_range& e) {
                     // No messages found
                     
                 }
-                if (messages.empty()) {
+                if (groupMap.empty()) {
                     reply = "No messages found for group " + tokens[1];
                 }
-                send(clientSocket, reply.c_str(), reply.length() - 1, 0);
+                send(clientSocket, reply.c_str(), reply.length(), 0);
             }
 
             else if (tokens[0].compare("STATUSREQ") == 0) {
+                if (tokens.size() == 2) {
 
+                    std::string msg;
+
+                    msg += "STATUSRESP,P3_GROUP_82," + tokens[1];
+                    // Loop through the unique groups we have messages for
+                    for(std::map<std::string, std::map<std::string, std::vector<std::string>>>::iterator i = messagesPerGroup.begin(); i != messagesPerGroup.end(); ++i) {
+                        // Add group name
+                        msg += "," + i->first + ",";
+                        int count = 0;
+                        // Add the number of messages from each group that has sent the current one messages
+                        for(std::map<std::string, std::vector<std::string>>::iterator j = i->second.begin(); j != i->second.end(); ++j) {
+                            count += j->second.size();
+                        }
+                        msg += std::to_string(count);
+                    }
+
+                    send(clientSocket, msg.c_str(), msg.length(), 0);
+                }
             }
 
             else if (tokens[0].compare("LISTSERVERS") == 0) {
+                    std::cout << "Servers connected" << std::endl;
+                    std::string msg;
 
+                    msg += "CONNECTED,";
+                    for (auto const &sock : clients)
+                    {
+                        msg += sock.second->name + ", ";
+                    }
+
+                    send(clientSocket, msg.c_str(), msg.length() - 1, 0);
             }
 
             else

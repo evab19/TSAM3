@@ -31,6 +31,13 @@
 
 // Threaded function for handling responss from server
 
+std::string getCurrentTimestamp() { 
+    std::time_t ts = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    // Convert timestamp to string, remove the \n that gets added on to the end
+    return std::string(strtok(std::ctime(&ts), "\n")) + " ";
+}
+
+
 void listenServer(int serverSocket)
 {
     int nread;                                  // Bytes read from socket
@@ -48,10 +55,12 @@ void listenServer(int serverSocket)
        }
        else if(nread > 0)
        {
-          printf("%s\n", buffer);
+          std::string tss = getCurrentTimestamp() + buffer + "\n";
+          printf(tss.c_str());
        }
     }
 }
+
 
 int main(int argc, char* argv[])
 {
@@ -62,6 +71,7 @@ int main(int argc, char* argv[])
    char buffer[1025];                        // buffer for writing to server
    bool finished;                   
    int set = 1;                              // Toggle for setsockopt
+   std::string group = "P3_Group_82";
 
    if(argc != 3)
    {
@@ -125,19 +135,48 @@ int main(int argc, char* argv[])
 
        std::string buf(buffer);
 
-       if (buf.substr(0,6).compare("GETMSG") == 0) {
-           std::cout << "Found the get" << std::endl;
+       std::string token;
+       std::vector<std::string> tokens;
+
+        std::replace(buf.begin(), buf.end(), ',', ' ');
+        
+        // No new line from hitting enter please. Does mean we miss newlines in messages
+        buf.erase(std::remove(buf.begin(), buf.end(), '\n'), buf.end());
+
+        // Parse
+        std::stringstream stream(buf);
+
+        while (stream >> token) {
+            tokens.push_back(token);
+        }
+
+       if (tokens[0].compare("GETMSG") == 0) {
+           if (tokens.size() == 2) {
+            std::string tss = getCurrentTimestamp() + buffer + "\n";
+            printf(tss.c_str());
+            std::string modifiedMessage = "*GET_MSG," + tokens[1] + "#";
+            nwrite = send(serverSocket, modifiedMessage.c_str(), modifiedMessage.length(), 0);
+           }
        }
 
-       else if (buf.substr(0,7).compare("SENDMSG") == 0) {
-           std::cout << "Found the send" << std::endl;
-       }
-
-       else if (buf.substr(0,11).compare("LISTSERVERS") == 0) {
-           std::cout << "Found the server list" << std::endl;
+       else if (tokens[0].compare("SENDMSG") == 0) {
+           if (tokens.size() >= 3) {
+                std::string tss = getCurrentTimestamp() + "" + buffer + "\n";
+                printf(tss.c_str());
+                std::string msg;
+                for (auto i = tokens.begin() + 2; i != tokens.end(); i++)
+                {
+                    msg += *i + " ";
+                }
+                std::string modifiedMessage = "*SEND_MSG," + tokens[1] + "," + group + "," + msg + "#";
+                nwrite = send(serverSocket, modifiedMessage.c_str(), modifiedMessage.length(), 0);
+           } 
        }
     
-       nwrite = send(serverSocket, buffer, strlen(buffer),0);
+       else {
+
+           nwrite = send(serverSocket, buf.c_str(), strlen(buf.c_str()),0);
+       }
 
        if(nwrite  == -1)
        {
